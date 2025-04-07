@@ -30,6 +30,7 @@ export default function ShowPasswordPage() {
   const [faceCaptured, setFaceCaptured] = useState(false);
   const [verificationAttempted, setVerificationAttempted] = useState(false);
   const [isVerifyingFace, setIsVerifyingFace] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
 
   // Camera references
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -341,6 +342,18 @@ export default function ShowPasswordPage() {
         toast.success(data.message || "Face ID verified successfully!");
         setFaceIdVerified(true);
         setIsFaceVerified(true);
+        
+        // Trigger celebration animation
+        setShowCelebration(true);
+        
+        // Fetch passwords after a short delay to allow celebration to be seen
+        setTimeout(() => {
+          fetchPasswords();
+          // Hide celebration after a few seconds
+          setTimeout(() => {
+            setShowCelebration(false);
+          }, 3000);
+        }, 800);
       } else {
         // Handle specific error messages from the backend
         const errorMessage = data.error || "Face ID verification failed. Please try again.";
@@ -388,6 +401,98 @@ export default function ShowPasswordPage() {
     resetFaceVerification();
     setVerificationAttempted(false);
     startCamera();
+  };
+
+  // Function to fetch passwords
+  const fetchPasswords = async () => {
+    try {
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        toast.error("You must be logged in to view passwords.");
+        return;
+      }
+      
+      const response = await fetch("http://127.0.0.1:8000/api/users/add_password/", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setPasswords(data);
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Failed to fetch passwords.");
+      }
+    } catch (error) {
+      console.error("⚠️ Error fetching passwords:", error);
+      toast.error("Error fetching passwords. Please try again.");
+    }
+  };
+
+  // Load passwords when component mounts if already verified
+  useEffect(() => {
+    if (isOTPVerified || faceIdVerified) {
+      fetchPasswords();
+    }
+  }, [isOTPVerified, faceIdVerified]);
+  
+  // Verify OTP
+  const handleVerifyOTP = async () => {
+    try {
+      if (!otp || otp.length !== 6) {
+        toast.error("Please enter a valid 6-digit OTP.");
+        return;
+      }
+
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        toast.error("You must be logged in to verify OTP.");
+        return;
+      }
+
+      const loadingToast = toast.loading("Verifying OTP...");
+
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/users/verify-otp/",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ otp }),
+        }
+      );
+
+      toast.dismiss(loadingToast);
+
+      if (response.ok) {
+        toast.success("OTP verified successfully!");
+        setIsOTPVerified(true);
+        
+        // Trigger celebration animation
+        setShowCelebration(true);
+        
+        // Fetch passwords after a short delay to allow celebration to be seen
+        setTimeout(() => {
+          fetchPasswords();
+          // Hide celebration after a few seconds
+          setTimeout(() => {
+            setShowCelebration(false);
+          }, 3000);
+        }, 800);
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Invalid OTP. Please try again.");
+      }
+    } catch (error) {
+      console.error("⚠️ Error verifying OTP:", error);
+      toast.error("Error verifying OTP. Please try again.");
+    }
   };
 
   return (
@@ -637,6 +742,41 @@ export default function ShowPasswordPage() {
                 </div>
           </div>
         )}
+
+            {/* Celebration animation when verification is successful */}
+            {showCelebration && (
+              <div className="celebration-overlay">
+                <div className="celebration-container">
+                  <div className="confetti-container">
+                    {[...Array(100)].map((_, i) => (
+                      <div 
+                        key={i} 
+                        className={`confetti confetti-${i % 10}`} 
+                        style={{
+                          left: `${Math.random() * 100}%`,
+                          width: `${Math.random() * 10 + 5}px`,
+                          height: `${Math.random() * 10 + 5}px`,
+                          animationDuration: `${Math.random() * 3 + 2}s`,
+                          animationDelay: `${Math.random() * 2}s`
+                        }}
+                      ></div>
+                    ))}
+                  </div>
+                  <div className="celebration-content">
+                    <div className="celebration-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-16 h-16">
+                        <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <h2 className="text-2xl font-bold mb-2">Verification Successful! 🎉</h2>
+                    <p className="text-gray-200 mb-4">You now have access to your passwords</p>
+                    <div className="py-2 px-4 bg-green-600 rounded-full inline-block animate-pulse">
+                      <span className="text-white font-medium">Secure Access Granted</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Password Table */}
             {isVerified && passwords.length > 0 && (
