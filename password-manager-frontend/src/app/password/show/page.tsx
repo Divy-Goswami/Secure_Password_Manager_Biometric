@@ -28,6 +28,8 @@ export default function ShowPasswordPage() {
   const router = useRouter();
   const { setIsAuthenticated } = useAuth();
   const [faceCaptured, setFaceCaptured] = useState(false);
+  const [verificationAttempted, setVerificationAttempted] = useState(false);
+  const [isVerifyingFace, setIsVerifyingFace] = useState(false);
 
   // Camera references
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -150,30 +152,40 @@ export default function ShowPasswordPage() {
     );
 
     if (!detections) {
-      alert("No face detected! Try again.");
+      toast.error("No face detected! Please position your face properly and try again.");
       return;
     }
 
     console.log("✅ Face detected! Attempting to capture...");
+    
+    // Create a high-quality capture of the entire face
     const { x, y, width, height } = detections.box;
+    
+    // Add padding around the face (20% on each side)
+    const paddingX = Math.floor(width * 0.2);
+    const paddingY = Math.floor(height * 0.2);
+    
+    // Calculate new coordinates with padding, ensuring they're within video bounds
+    const videoWidth = video.videoWidth;
+    const videoHeight = video.videoHeight;
+    
+    const newX = Math.max(0, x - paddingX);
+    const newY = Math.max(0, y - paddingY);
+    const newWidth = Math.min(width + (paddingX * 2), videoWidth - newX);
+    const newHeight = Math.min(height + (paddingY * 2), videoHeight - newY);
 
     // Create a temporary canvas to crop the face region
     const faceCanvas = document.createElement("canvas");
-    faceCanvas.width = width;
-    faceCanvas.height = height;
+    faceCanvas.width = newWidth;
+    faceCanvas.height = newHeight;
     const faceCtx = faceCanvas.getContext("2d");
 
     if (faceCtx) {
+      // Draw the video frame to the canvas with the calculated dimensions
       faceCtx.drawImage(
         video,
-        x,
-        y,
-        width,
-        height, // Crop area from the video
-        0,
-        0,
-        width,
-        height // Draw onto temporary canvas
+        newX, newY, newWidth, newHeight, // Crop area from the video
+        0, 0, newWidth, newHeight // Draw onto temporary canvas
       );
 
       // Convert the cropped face to a Blob and create an object URL for display
@@ -184,15 +196,18 @@ export default function ShowPasswordPage() {
             setImageData(imageUrl);
             setFaceCaptured(true);
             console.log("✅ Image Captured!");
+            toast.success("Face captured successfully");
 
             // Stop the camera after capturing
             setIsCameraOpen(false);
             const stream = video.srcObject as MediaStream;
             stream.getTracks().forEach((track) => track.stop());
+          } else {
+            toast.error("Failed to process the captured image. Please try again.");
           }
         },
         "image/png",
-        0.8
+        0.95 // Higher quality
       );
     }
   };
@@ -209,11 +224,15 @@ export default function ShowPasswordPage() {
   // Handle sending OTP request
   const handleSendOTP = async () => {
     try {
+      toast.loading("Sending OTP to your email...");
+      
       const token = localStorage.getItem("access_token");
       if (!token) {
+        toast.dismiss();
         toast.error("You must be logged in to send OTP.");
         return;
       }
+      
       const response = await fetch(
         "http://127.0.0.1:8000/api/users/send-otp-email/",
         {
@@ -224,15 +243,26 @@ export default function ShowPasswordPage() {
           },
         }
       );
+      
+      toast.dismiss();
+      
       const data = await response.json();
       if (response.ok) {
         setOtpSent(true); // Mark OTP as sent
+        
+        // When skipping face verification, consider clearing those UI elements
+        if (verificationAttempted && !faceIdVerified) {
+          resetFaceVerification();
+          setVerificationAttempted(false);
+        }
+        
         const userEmail = data.user.email;
         toast.success(`OTP has been sent to your email: ${userEmail}`);
       } else {
         toast.error(data.error || "Failed to send OTP.");
       }
     } catch (error) {
+      toast.dismiss();
       console.error("Error sending OTP:", error);
       toast.error("Error sending OTP.");
     }
@@ -272,9 +302,21 @@ export default function ShowPasswordPage() {
   };
   const uploadFaceId = async () => {
     try {
+      if (!imageData) {
+        toast.error("No face image captured. Please try again.");
+        return;
+      }
+
+      // Show loading state
+      setIsVerifyingFace(true);
+      
       const formData = new FormData();
       // imageData is an object URL; fetch it to get the Blob
-      const responseBlob = await fetch(imageData!);
+      const responseBlob = await fetch(imageData);
+      if (!responseBlob.ok) {
+        throw new Error("Failed to process captured image");
+      }
+      
       const imageBlob = await responseBlob.blob();
       formData.append("image", imageBlob, "face.png");
 
@@ -284,23 +326,44 @@ export default function ShowPasswordPage() {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            // Do not set Content-Type manually; FormData does that automatically.
           },
           body: formData,
         }
       );
 
-      // Use response.ok to check if the response status is in the 2xx range
+      const data = await response.json();
+      
+      // Verification completed
+      setIsVerifyingFace(false);
+      setVerificationAttempted(true);
+
       if (response.ok) {
-        toast.success("Face ID Matches");
+        toast.success(data.message || "Face ID verified successfully!");
         setFaceIdVerified(true);
+        setIsFaceVerified(true);
       } else {
-        const errorData = await response.json();
-        toast.error("Face doesn't match. Please try again");
+        // Handle specific error messages from the backend
+        const errorMessage = data.error || "Face ID verification failed. Please try again.";
+        toast.error(errorMessage);
+        
+        // Reset states if verification fails, but keep the captured image for reference
+        setFaceIdVerified(false);
+        setIsFaceVerified(false);
+        
+        // If the error is related to no face ID being set up, redirect to dashboard
+        if (response.status === 404 && errorMessage.includes("No face ID found")) {
+          router.push("/dashboard");
+        }
       }
     } catch (error) {
-      console.error("⚠️ Error uploading Face. Please try again.", error);
-      toast.error("Error uploading Face. Please try again.");
+      console.error("⚠️ Error during face verification:", error);
+      toast.error("An unexpected error occurred. Please try again.");
+      
+      // Reset states on error
+      setFaceIdVerified(false);
+      setIsFaceVerified(false);
+      setIsVerifyingFace(false);
+      setVerificationAttempted(true);
     }
   };
 
@@ -309,13 +372,31 @@ export default function ShowPasswordPage() {
     setIsVerified(true);
   };
 
+  const resetFaceVerification = () => {
+    // Clear all face verification related states
+    setFaceIdVerified(false);
+    setFaceCaptured(false);
+    setImageData(null);
+    setFaceDetected(false);
+    setIsFaceVerified(false);
+    setIsVerifyingFace(false);
+    setVerificationAttempted(false);
+  };
+
+  const handleTryAgain = () => {
+    // Reset states and start camera again
+    resetFaceVerification();
+    setVerificationAttempted(false);
+    startCamera();
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white">
       {/* Header */}
       <header className="bg-gray-800 bg-opacity-70 backdrop-blur-lg shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-blue-400">
-            <span className="text-white">Babu's</span> Password Manager
+            <span className="text-white">Biopass</span> Password Manager
           </h1>
           <div className="flex items-center space-x-4">
             <button
@@ -418,14 +499,14 @@ export default function ShowPasswordPage() {
             </div>
           )}
 
-            {/* Captured Face */}
-        {!faceIdVerified && faceCaptured && imageData && (
+            {/* Show captured face before verification */}
+            {!faceIdVerified && faceCaptured && imageData && !verificationAttempted && !isVerifyingFace && (
               <div className="text-center mt-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
                 <p className="text-gray-300 mb-3">Captured Face:</p>
                 <div className="relative w-32 h-32 mx-auto">
-            <img
-              src={imageData}
-              alt="Captured Face"
+                  <img
+                    src={imageData}
+                    alt="Captured Face"
                     className="w-full h-full object-cover rounded-full border-2 border-blue-500"
                   />
                   <div className="absolute -bottom-1 -right-1 bg-green-500 p-1 rounded-full">
@@ -434,20 +515,76 @@ export default function ShowPasswordPage() {
                     </svg>
                   </div>
                 </div>
-            <button
-                  className="btn-modern btn-primary w-full mt-4 py-2 flex items-center justify-center"
-              onClick={uploadFaceId}
-            >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                  </svg>
-                  Verify Face ID
-            </button>
-          </div>
-        )}
+                <div className="flex flex-col space-y-3 mt-4">
+                  <button
+                    className="btn-modern btn-primary w-full py-2 flex items-center justify-center"
+                    onClick={uploadFaceId}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    Verify Face ID
+                  </button>
+                  <button
+                    className="btn-modern bg-gray-700 hover:bg-gray-600 w-full py-2 flex items-center justify-center"
+                    onClick={handleTryAgain}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Try Again
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Verification Loading Indicator */}
+            {isVerifyingFace && (
+              <div className="text-center mt-6 p-8 bg-gray-800 rounded-lg border border-gray-700">
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-blue-500 bg-opacity-20 flex items-center justify-center animate-pulse">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Verifying Your Face</h3>
+                <p className="text-gray-300">Please wait while we verify your identity...</p>
+                <div className="mt-4 relative h-2 max-w-xs mx-auto bg-gray-700 rounded-full overflow-hidden">
+                  <div className="absolute top-0 left-0 h-full bg-blue-500 animate-progress-bar"></div>
+                </div>
+              </div>
+            )}
+
+            {/* Failed Verification Message - only show after verification attempt and not during verification */}
+            {!faceIdVerified && !isCameraOpen && faceCaptured && verificationAttempted && !isVerifyingFace && (
+              <div className="mt-6 p-6 bg-red-900 bg-opacity-30 rounded-lg border border-red-700 text-center">
+                <div className="flex justify-center mb-4">
+                  <div className="w-16 h-16 rounded-full bg-red-800 bg-opacity-50 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Face Verification Failed</h3>
+                <p className="text-gray-300 mb-6">Your face could not be verified. Please try again or use another verification method.</p>
+                
+                <div className="flex flex-col space-y-3">
+                  <button
+                    onClick={handleTryAgain}
+                    className="btn-modern bg-red-600 hover:bg-red-700 w-full py-3 flex items-center justify-center"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Try Face Verification Again
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* OTP Verification Section */}
-            {(faceIdVerified || true) && (
+            {(faceIdVerified || otpSent) && (
               <div className="mt-8">
                 <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
                   <h3 className="text-xl font-semibold mb-4 flex items-center">
@@ -591,7 +728,7 @@ export default function ShowPasswordPage() {
       </main>
       
       <footer className="mt-auto py-6 text-center text-gray-500 text-sm">
-        <p>© 2023 Biopass Password Manager. All rights reserved.</p>
+        <p>© 2025 Biopass Password Manager. All rights reserved.</p>
       </footer>
     </div>
   );

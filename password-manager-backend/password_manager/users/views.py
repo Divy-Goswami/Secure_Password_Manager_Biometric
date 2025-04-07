@@ -39,6 +39,9 @@ class SignupView(APIView):
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
+        
+        # Print request data for debugging
+        print("Signup request data:", request.data)
 
         if serializer.is_valid():
             validated_data = serializer.validated_data
@@ -69,6 +72,8 @@ class SignupView(APIView):
                 status=status.HTTP_201_CREATED,
             )
 
+        # Print detailed validation errors
+        print("Validation errors:", serializer.errors)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -294,7 +299,7 @@ class ImageUploadView(APIView):
     def post(self, request, *args, **kwargs):
         # Ensure the request includes the image file
         user = request.user
-        print(request.FILES)
+        print(f"Processing image upload for user: {user.username}")
 
         if "image" not in request.FILES:
             return Response(
@@ -303,22 +308,80 @@ class ImageUploadView(APIView):
             )
 
         file = request.FILES["image"]
+        print(f"Received image file: {file.name}, size: {file.size} bytes")
 
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        filename = f"{timestamp}_{file.name}"
+        # Validate that the uploaded file contains a clear face
+        try:
+            # Load the image and detect faces
+            image = face_recognition.load_image_file(file)
+            face_locations = face_recognition.face_locations(image)
+            
+            print(f"Face locations detected: {face_locations}")
+            
+            # Check if any face was detected
+            if not face_locations:
+                return Response(
+                    {"error": "No face detected in the uploaded image. Please provide a clear image of your face."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Check if multiple faces were detected
+            if len(face_locations) > 1:
+                return Response(
+                    {"error": f"Multiple faces ({len(face_locations)}) detected in the image. Please provide an image with only your face."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            # Try to generate a face encoding to ensure the face is clear enough
+            face_encodings = face_recognition.face_encodings(image, face_locations)
+            if not face_encodings:
+                return Response(
+                    {"error": "Could not generate face encoding. Please provide a clearer image of your face."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+                
+            print("Face validation successful")
+            
+            # Reset file pointer for saving
+            file.seek(0)
+            
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            filename = f"{timestamp}_{file.name}"
 
-        # Create an image instance and save the image file
-        image_instance = Image(image=file, user=user)
-        image_instance.save()  # This will automatically save the image to the server and populate image_url
+            # Create an image instance and save the image file
+            try:
+                # Delete previous face image if it exists
+                try:
+                    previous_image = Image.objects.get(user=user)
+                    previous_image.delete()
+                    print(f"Deleted previous face image for user: {user.username}")
+                except Image.DoesNotExist:
+                    pass
 
-        # Return the image URL in the response
-        return Response(
-            {
-                "message": "Image uploaded successfully!",
-                "image_url": str(image_instance.image),
-            },
-            status=status.HTTP_201_CREATED,
-        )
+                image_instance = Image(image=file, user=user)
+                image_instance.save()  # This will automatically save the image to the server and populate image_url
+                print(f"New face image saved successfully at: {image_instance.image}")
+
+                # Return the image URL in the response
+                return Response(
+                    {
+                        "message": "Face image uploaded successfully!",
+                        "image_url": str(image_instance.image),
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+            except Exception as e:
+                print(f"Error saving image: {str(e)}")
+                return Response(
+                    {"error": f"Error saving image: {str(e)}"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+        except Exception as e:
+            print(f"Error processing image: {str(e)}")
+            return Response(
+                {"error": f"Error processing image: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class ImageListView(APIView):
@@ -337,48 +400,114 @@ class VerifyFaceId(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
-        user = request.user
-        # Get FaceId from server
+        try:
+            user = request.user
 
-        if "image" not in request.FILES:
+            if "image" not in request.FILES:
+                return Response(
+                    {"error": "No image provided."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            uploaded_image = request.FILES["image"]
+
+            # Get faceId from DB
+            try:
+                image = Image.objects.get(user=user)
+            except Image.DoesNotExist:
+                return Response(
+                    {"error": "No face ID found for this user. Please set up Face ID first."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            # Process uploaded image
+            try:
+                image1 = face_recognition.load_image_file(uploaded_image)
+                face_locations1 = face_recognition.face_locations(image1)
+                
+                print(f"Uploaded image face locations: {face_locations1}")
+                
+                if not face_locations1:
+                    return Response(
+                        {"error": "No face detected in the uploaded image."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                
+                if len(face_locations1) > 1:
+                    print(f"WARNING: Multiple faces ({len(face_locations1)}) detected in uploaded image")
+                    return Response(
+                        {"error": f"Multiple faces ({len(face_locations1)}) detected in the uploaded image. Please ensure only your face is visible."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                
+                face_encoding1 = face_recognition.face_encodings(image1, face_locations1)[0]
+                print(f"Uploaded face encoding generated successfully")
+            except Exception as e:
+                print(f"Error processing uploaded image: {str(e)}")
+                return Response(
+                    {"error": f"Error processing uploaded image: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Process saved faceId image
+            try:
+                user_saved_image_path = self.get_image_path(str(image.image))
+                print(f"Attempting to load saved image from: {user_saved_image_path}")
+                
+                image2 = face_recognition.load_image_file(user_saved_image_path)
+                face_locations2 = face_recognition.face_locations(image2)
+                
+                print(f"Saved image face locations: {face_locations2}")
+                
+                if not face_locations2:
+                    return Response(
+                        {"error": "No face detected in the saved face ID image."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                
+                if len(face_locations2) > 1:
+                    print(f"WARNING: Multiple faces ({len(face_locations2)}) detected in saved image")
+                
+                face_encoding2 = face_recognition.face_encodings(image2, face_locations2)[0]
+                print(f"Saved face encoding generated successfully")
+            except Exception as e:
+                return Response(
+                    {"error": f"Error processing saved face ID image: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # Compare faces
+            # Lower tolerance value makes the comparison more strict (default is 0.6)
+            tolerance = 0.4  # Making this stricter
+            results = face_recognition.compare_faces([face_encoding1], face_encoding2, tolerance=tolerance)
+            
+            # Also calculate the distance - lower means more similar
+            face_distance = face_recognition.face_distance([face_encoding1], face_encoding2)[0]
+            print(f"Face distance: {face_distance}, Tolerance: {tolerance}")
+
+            if results[0]:
+                return Response({"status": True, "message": "Face ID verified successfully!"})
+            else:
+                return Response(
+                    {"status": False, "error": f"Face ID verification failed. The faces do not match (similarity distance: {face_distance:.4f})."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        except Exception as e:
             return Response(
-                {"error": "No image provided."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        uploaded_image = request.FILES["image"]
-
-        # Get faceId from DB
-        image = Image.objects.get(user=user)
-
-        image1 = face_recognition.load_image_file(uploaded_image)
-        face_location1 = face_recognition.face_locations(image1)
-        face_encoding1 = face_recognition.face_encodings(image1)[0]
-
-        print(f"Face Location 1: {face_location1}")
-        print(f"Face Encoding 1: {face_encoding1}")
-
-        # Process saved faceId image of user
-        user_saved_image_path = self.get_image_path(str(image.image))
-        image2 = face_recognition.load_image_file(user_saved_image_path)
-        face_location2 = face_recognition.face_locations(image2)
-        face_encoding2 = face_recognition.face_encodings(image2)[0]
-
-        print(f"Face Location 2: {face_location2}")
-        print(f"Face Encoding 2: {face_encoding2}")
-
-        results = face_recognition.compare_faces([face_encoding1], face_encoding2)
-
-        if results[0]:
-            return Response({"status": True})
-
-        return Response({"status": False, status: 400})
-
     def get_image_path(self, image_path):
-        # Assuming image_path is the full path to the image, like '/media/images/your_image.jpg'
-        BASE_DIR = Path(__file__).resolve().parent.parent
-        # If the path is relative (starts with /media/), you need to resolve it to the absolute file path
-        media_root = os.path.join(BASE_DIR, "media")
-
-        full_image_path = os.path.join(media_root, image_path)
-        return full_image_path
+        try:
+            BASE_DIR = Path(__file__).resolve().parent.parent
+            media_root = os.path.join(BASE_DIR, "media")
+            full_image_path = os.path.join(media_root, image_path)
+            
+            if not os.path.exists(full_image_path):
+                raise FileNotFoundError(f"Face ID image not found at path: {full_image_path}")
+                
+            return full_image_path
+        except Exception as e:
+            raise Exception(f"Error resolving image path: {str(e)}")

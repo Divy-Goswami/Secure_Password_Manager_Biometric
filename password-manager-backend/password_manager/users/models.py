@@ -8,6 +8,7 @@ import hashlib
 import re
 from django.contrib.auth.hashers import make_password
 import pyotp  # For OTP generation
+from django.utils import timezone
 
 
 # Load Haar Cascade for face detection
@@ -58,6 +59,7 @@ class CustomUser(AbstractUser):
     )
     otp_secret = models.CharField(max_length=255, blank=True, null=True)
     otp_generated = models.CharField(max_length=255, blank=True, null=True)
+    last_face_verification = models.DateTimeField(blank=True, null=True)
 
     # OTP related methods
     def generate_otp_secret(self):
@@ -77,6 +79,15 @@ class CustomUser(AbstractUser):
         """Verify if the OTP provided is correct."""
         totp = pyotp.TOTP(self.otp_secret)
         return totp.verify(otp)  # Returns True if OTP is valid, False otherwise
+
+    def is_face_verification_valid(self):
+        """Check if face verification is recent enough to be valid."""
+        if not self.last_face_verification:
+            return False
+            
+        now = timezone.now()
+        five_minutes = datetime.timedelta(minutes=5)
+        return now - self.last_face_verification < five_minutes
 
 
 class Password(models.Model):
