@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useState, useRef, useEffect } from "react";
 import toast from "react-hot-toast";
 import * as faceapi from "face-api.js";
+import Celebration from "@/components/Celebration";
 
 interface PasswordEntry {
   domain_name: string;
@@ -289,10 +290,17 @@ export default function ShowPasswordPage() {
       );
       const data = await response.json();
       if (response.ok) {
-        setPasswords(data); // Set the passwords if OTP is verified successfully
-        setIsOTPVerified(true);
-        setIsVerified(true);
-        toast.success("Passwords fetched successfully!");
+        // Show celebration before displaying passwords
+        setShowCelebration(true);
+        
+        // Set a timeout to hide celebration and show passwords
+        setTimeout(() => {
+          setShowCelebration(false);
+          setPasswords(data); // Set the passwords if OTP is verified successfully
+          setIsOTPVerified(true);
+          setIsVerified(true);
+          toast.success("Passwords fetched successfully!");
+        }, 3000);
       } else {
         toast.error(data.error || "Failed to verify OTP.");
       }
@@ -342,18 +350,6 @@ export default function ShowPasswordPage() {
         toast.success(data.message || "Face ID verified successfully!");
         setFaceIdVerified(true);
         setIsFaceVerified(true);
-        
-        // Trigger celebration animation
-        setShowCelebration(true);
-        
-        // Fetch passwords after a short delay to allow celebration to be seen
-        setTimeout(() => {
-          fetchPasswords();
-          // Hide celebration after a few seconds
-          setTimeout(() => {
-            setShowCelebration(false);
-          }, 3000);
-        }, 800);
       } else {
         // Handle specific error messages from the backend
         const errorMessage = data.error || "Face ID verification failed. Please try again.";
@@ -403,100 +399,11 @@ export default function ShowPasswordPage() {
     startCamera();
   };
 
-  // Function to fetch passwords
-  const fetchPasswords = async () => {
-    try {
-      const token = localStorage.getItem("access_token");
-      if (!token) {
-        toast.error("You must be logged in to view passwords.");
-        return;
-      }
-      
-      const response = await fetch("http://127.0.0.1:8000/api/users/add_password/", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setPasswords(data);
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.error || "Failed to fetch passwords.");
-      }
-    } catch (error) {
-      console.error("⚠️ Error fetching passwords:", error);
-      toast.error("Error fetching passwords. Please try again.");
-    }
-  };
-
-  // Load passwords when component mounts if already verified
-  useEffect(() => {
-    if (isOTPVerified || faceIdVerified) {
-      fetchPasswords();
-    }
-  }, [isOTPVerified, faceIdVerified]);
-  
-  // Verify OTP
-  const handleVerifyOTP = async () => {
-    try {
-      if (!otp || otp.length !== 6) {
-        toast.error("Please enter a valid 6-digit OTP.");
-        return;
-      }
-
-      const token = localStorage.getItem("access_token");
-      if (!token) {
-        toast.error("You must be logged in to verify OTP.");
-        return;
-      }
-
-      const loadingToast = toast.loading("Verifying OTP...");
-
-      const response = await fetch(
-        "http://127.0.0.1:8000/api/users/verify-otp/",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ otp }),
-        }
-      );
-
-      toast.dismiss(loadingToast);
-
-      if (response.ok) {
-        toast.success("OTP verified successfully!");
-        setIsOTPVerified(true);
-        
-        // Trigger celebration animation
-        setShowCelebration(true);
-        
-        // Fetch passwords after a short delay to allow celebration to be seen
-        setTimeout(() => {
-          fetchPasswords();
-          // Hide celebration after a few seconds
-          setTimeout(() => {
-            setShowCelebration(false);
-          }, 3000);
-        }, 800);
-      } else {
-        const errorData = await response.json();
-        toast.error(errorData.error || "Invalid OTP. Please try again.");
-      }
-    } catch (error) {
-      console.error("⚠️ Error verifying OTP:", error);
-      toast.error("Error verifying OTP. Please try again.");
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 text-white">
+      {/* Show celebration when OTP verification is successful */}
+      {showCelebration && <Celebration message="Access Granted!" />}
+      
       {/* Header */}
       <header className="bg-gray-800 bg-opacity-70 backdrop-blur-lg shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
@@ -714,7 +621,7 @@ export default function ShowPasswordPage() {
               !isVerified && (
                       <div className="mt-4 space-y-4">
                         <div className="relative">
-                          <div className="icon-container-left">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                             </svg>
@@ -729,12 +636,21 @@ export default function ShowPasswordPage() {
                         </div>
                   <button
                     onClick={handleOTPSubmit}
-                          className="btn-modern btn-primary w-full py-2 flex items-center justify-center"
+                    className="btn-modern bg-gradient-to-r from-purple-600 to-blue-500 hover:from-purple-700 hover:to-blue-600 w-full py-3 flex items-center justify-center relative overflow-hidden group"
+                    disabled={!otp}
                   >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                          </svg>
-                          Verify OTP
+                    <span className="absolute inset-0 w-full h-full bg-gradient-to-br from-blue-500 to-purple-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+                    <span className="absolute inset-0 w-full h-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                    </span>
+                    <span className="relative z-10 flex items-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Verify & Unlock Passwords</span>
+                    </span>
                   </button>
                 </div>
               )
@@ -742,41 +658,6 @@ export default function ShowPasswordPage() {
                 </div>
           </div>
         )}
-
-            {/* Celebration animation when verification is successful */}
-            {showCelebration && (
-              <div className="celebration-overlay">
-                <div className="celebration-container">
-                  <div className="confetti-container">
-                    {[...Array(100)].map((_, i) => (
-                      <div 
-                        key={i} 
-                        className={`confetti confetti-${i % 10}`} 
-                        style={{
-                          left: `${Math.random() * 100}%`,
-                          width: `${Math.random() * 10 + 5}px`,
-                          height: `${Math.random() * 10 + 5}px`,
-                          animationDuration: `${Math.random() * 3 + 2}s`,
-                          animationDelay: `${Math.random() * 2}s`
-                        }}
-                      ></div>
-                    ))}
-                  </div>
-                  <div className="celebration-content">
-                    <div className="celebration-icon">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-16 h-16">
-                        <path fillRule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clipRule="evenodd" />
-                      </svg>
-                    </div>
-                    <h2 className="text-2xl font-bold mb-2">Verification Successful! 🎉</h2>
-                    <p className="text-gray-200 mb-4">You now have access to your passwords</p>
-                    <div className="py-2 px-4 bg-green-600 rounded-full inline-block animate-pulse">
-                      <span className="text-white font-medium">Secure Access Granted</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Password Table */}
             {isVerified && passwords.length > 0 && (

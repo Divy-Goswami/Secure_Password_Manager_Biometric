@@ -267,108 +267,108 @@ body {
   }
 }
 
-/* Celebration overlay and animation */
-.celebration-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  background-color: rgba(0, 0, 0, 0.7);
-  animation: fadeIn 0.5s ease-out;
-}
-
-.celebration-container {
-  text-align: center;
-  position: relative;
-  padding: 2rem;
-}
-
-.celebration-content {
-  background-color: #1f2937;
-  border-radius: 1rem;
-  padding: 2rem;
-  box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
-  animation: scaleIn 0.5s ease-out;
-  position: relative;
-  z-index: 10;
-  border: 2px solid #3b82f6;
-}
-
-.celebration-icon {
-  width: 5rem;
-  height: 5rem;
-  margin: 0 auto 1rem;
-  color: #22c55e;
-  animation: pulse 2s infinite;
-}
-
+/* Confetti animations */
 .confetti-container {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  z-index: 999;
+  pointer-events: none;
   overflow: hidden;
-  z-index: 0;
+  display: flex;
 }
 
 .confetti {
   position: absolute;
   width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  opacity: 0.7;
-  animation: confettiFall 5s ease-out forwards;
-  z-index: 9;
+  height: 20px;
+  background-color: var(--confetti-color);
+  opacity: 0.8;
+  animation: fall linear, rotate ease-in-out;
+  animation-iteration-count: 1;
+  transform-origin: center;
 }
 
-/* Remove the fixed positions for confetti, as we're now using random positions */
-.confetti-0 { background-color: #f59e0b; }
-.confetti-1 { background-color: #10b981; }
-.confetti-2 { background-color: #3b82f6; }
-.confetti-3 { background-color: #8b5cf6; }
-.confetti-4 { background-color: #ec4899; }
-.confetti-5 { background-color: #f87171; }
-.confetti-6 { background-color: #fbbf24; }
-.confetti-7 { background-color: #34d399; }
-.confetti-8 { background-color: #60a5fa; }
-.confetti-9 { background-color: #a78bfa; }
-
-@keyframes confettiFall {
+@keyframes fall {
   0% {
-    transform: translateY(-10vh) rotate(0deg);
+    top: -100px;
+  }
+  100% {
+    top: 100vh;
+  }
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Success overlay animation */
+.success-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  animation: fadeInOut 3s ease-in-out forwards;
+  background: radial-gradient(circle, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.9) 100%);
+  backdrop-filter: blur(3px);
+}
+
+.success-content {
+  transform: scale(0.5);
+  animation: zoomIn 1s ease-out forwards;
+}
+
+@keyframes fadeInOut {
+  0% {
+    opacity: 0;
+  }
+  20% {
     opacity: 1;
   }
-  25% {
+  80% {
     opacity: 1;
   }
   100% {
-    transform: translateY(100vh) rotate(720deg);
     opacity: 0;
   }
 }
 
-@keyframes scaleIn {
+@keyframes zoomIn {
   0% {
-    transform: scale(0.8);
-    opacity: 0;
+    transform: scale(0.5);
+  }
+  60% {
+    transform: scale(1.1);
   }
   100% {
     transform: scale(1);
-    opacity: 1;
   }
 }
 
-@keyframes fadeIn {
+/* Celebration icon pulse */
+.celebration-icon {
+  animation: pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes pulse {
   0% {
-    opacity: 0;
+    transform: scale(1);
   }
   100% {
-    opacity: 1;
+    transform: scale(1.1);
   }
 }

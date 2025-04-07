@@ -69,25 +69,39 @@ export default function SignupPage() {
     
     setLoading(true);
 
+    // Prepare the request data
+    const requestData = {
+      username: name.trim(),
+      phone: phone.trim(),
+      email: email.trim().toLowerCase(),
+      password: password,
+    };
+
+    // Log the request data for debugging
+    console.log("Sending signup request with data:", requestData);
+
     try {
       const response = await fetch("http://127.0.0.1:8000/api/users/signup/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: name.trim(),
-          phone: phone.trim(),
-          email: email.trim().toLowerCase(),
-          password: password,
-        }),
+        body: JSON.stringify(requestData),
       });
 
+      // Log the response status
+      console.log("Signup response status:", response.status);
+
       const data = await response.json();
+      
+      // Log the response data
+      console.log("Signup response data:", data);
 
       if (response.ok) {
         toast.success("Account created successfully!");
         setTimeout(() => router.push("../auth/login"), 1500);
       } else {
-        toast.error(data.error || "Signup failed. Please try again.");
+        // Display more detailed error message
+        const errorMessage = data.error || Object.values(data).flat().join(', ') || "Signup failed. Please try again.";
+        toast.error(errorMessage);
       }
     } catch (error) {
       console.error("⚠️ API Error:", error);

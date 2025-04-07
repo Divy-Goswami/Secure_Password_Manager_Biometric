@@ -18,6 +18,17 @@ class UserSignupSerializer(serializers.ModelSerializer):
         """Ensure email is always stored in lowercase."""
         return value.strip().lower()
 
+    def validate_phone(self, value):
+        """Validate phone number format."""
+        # Remove any non-digit characters
+        cleaned_phone = ''.join(filter(str.isdigit, value))
+        
+        # Check if the phone number is between 10 and 15 digits
+        if not (10 <= len(cleaned_phone) <= 15):
+            raise serializers.ValidationError("Phone number must be between 10 and 15 digits.")
+            
+        return cleaned_phone
+
     def create(self, validated_data):
         password = validated_data.pop("password", None)
 

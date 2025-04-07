@@ -43,7 +43,7 @@ export default function DashboardPage() {
       }
     };
 
-    const fetchUserData = async () => {
+    const fetchUserDetails = async () => {
       const refreshToken = localStorage.getItem("refresh_token");
 
       if (!token) {
@@ -129,7 +129,7 @@ export default function DashboardPage() {
     };
 
     loadModels();
-    fetchUserData();
+    fetchUserDetails();
     checkIfFaceIdExists();
   }, []);
 
@@ -265,13 +265,20 @@ export default function DashboardPage() {
 
   const uploadFaceId = async () => {
     try {
+      if (!imageData) {
+        toast.error("No face image captured. Please try again.");
+        return;
+      }
+
+      toast.loading("Processing and validating your face image...");
+      
       const formData = new FormData();
       // imageData is an object URL; fetch it to get the Blob
       const responseBlob = await fetch(imageData!);
       const imageBlob = await responseBlob.blob();
       formData.append("image", imageBlob, "face.png");
 
-      console.log("Uploading image with FormData:", formData);
+      console.log("Uploading image with FormData");
 
       const response = await fetch(
         "http://127.0.0.1:8000/api/users/image-upload/",
@@ -285,19 +292,27 @@ export default function DashboardPage() {
         }
       );
 
+      toast.dismiss();
+      
+      const data = await response.json();
+      
       // Use response.ok to check if the response status is in the 2xx range
       if (response.ok) {
-        toast.success("Face uploaded successfully! Face ID setup complete.");
+        toast.success(data.message || "Face uploaded successfully! Face ID setup complete.");
         setFaceIdExists(true);
         setImageData(null);
+        setFaceCaptured(false);
+        // Refresh the page to reload all data
+        window.location.reload();
       } else {
-        const errorData = await response.json();
-        console.error("Upload failed:", errorData);
-        toast.error("Failed to upload face.");
+        console.error("Upload failed:", data);
+        toast.error(data.error || "Failed to upload face. Please try again with a clearer image of your face only.");
+        // Keep the captured image so user can try again
       }
     } catch (error) {
+      toast.dismiss();
       console.error("⚠️ Error uploading Face. Please try again.", error);
-      toast.error("Error uploading Face. Please try again.");
+      toast.error("Error uploading Face. Please try again with a clearer image.");
     }
   };
 

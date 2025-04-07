@@ -87,7 +87,7 @@ const AddPasswordForm = () => {
       <header className="bg-gray-800 bg-opacity-70 backdrop-blur-lg shadow-md">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-blue-400">
-            <span className="text-white">Babu's</span> Password Manager
+            <span className="text-white">Biopass</span> Password Manager
           </h1>
           <div className="flex items-center space-x-4">
             <button
@@ -335,7 +335,7 @@ const AddPasswordForm = () => {
       </main>
       
       <footer className="mt-auto py-6 text-center text-gray-500 text-sm">
-        <p>© 2023 Biopass Password Manager. All rights reserved.</p>
+        <p>© 2025 Biopass Password Manager. All rights reserved.</p>
       </footer>
     </div>
   );

@@ -12,7 +12,6 @@ from .views import (
     ImageUploadView,
     ImageListView,
     VerifyFaceId,
-    check_face_verification,
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -34,5 +33,4 @@ urlpatterns = [
     path("image-upload/", ImageUploadView.as_view(), name="image_upload"),
     path("image/", ImageListView.as_view(), name="view_image"),
     path("verify-face-id/", VerifyFaceId.as_view(), name="verify_face_id"),
-    path("check-face-verification/", check_face_verification, name="check_face_verification"),
 ]
