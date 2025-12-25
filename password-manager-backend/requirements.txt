@@ -21,6 +21,7 @@ argon2-cffi>=21.3.0  # Secure password hashing
 # CORS & Permissions
 django-cors-headers>=4.0.0
 django-filter>=23.2
+django-extensions>=3.2.0
 
 # Development & Debugging
 black>=23.1.0  # Code formatting
