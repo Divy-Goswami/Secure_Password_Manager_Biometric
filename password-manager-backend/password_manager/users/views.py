@@ -1,6 +1,13 @@
 import os
 import pyotp
-import face_recognition
+import numpy as np
+from PIL import Image as PILImage
+try:
+    import face_recognition
+    FACE_RECOGNITION_AVAILABLE = True
+except ImportError:
+    FACE_RECOGNITION_AVAILABLE = False
+    face_recognition = None
 from pathlib import Path
 from datetime import datetime
 
@@ -298,6 +305,12 @@ class ImageUploadView(APIView):
 
     def post(self, request, *args, **kwargs):
         # Ensure the request includes the image file
+        if not FACE_RECOGNITION_AVAILABLE:
+            return Response(
+                {"error": "Face recognition is not available. Please install dlib and face_recognition."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        
         user = request.user
         print(f"Processing image upload for user: {user.username}")
 
@@ -312,8 +325,20 @@ class ImageUploadView(APIView):
 
         # Validate that the uploaded file contains a clear face
         try:
-            # Load the image and detect faces
-            image = face_recognition.load_image_file(file)
+            # Reset file pointer to beginning
+            file.seek(0)
+            # Load the image using PIL first, then convert to numpy array
+            # This ensures compatibility with Django's UploadedFile
+            pil_image = PILImage.open(file)
+            # Convert PIL image to RGB if necessary (face_recognition expects RGB)
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            # Convert to numpy array
+            image = np.array(pil_image)
+            # Reset file pointer again for saving later
+            file.seek(0)
+            
+            # Detect faces
             face_locations = face_recognition.face_locations(image)
             
             print(f"Face locations detected: {face_locations}")
@@ -377,9 +402,12 @@ class ImageUploadView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
         except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
             print(f"Error processing image: {str(e)}")
+            print(f"Traceback: {error_traceback}")
             return Response(
-                {"error": f"Error processing image: {str(e)}"},
+                {"error": f"Error processing image: {str(e)}", "details": str(e)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -400,6 +428,12 @@ class VerifyFaceId(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        if not FACE_RECOGNITION_AVAILABLE:
+            return Response(
+                {"error": "Face recognition is not available. Please install dlib and face_recognition."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        
         try:
             user = request.user
 
@@ -422,7 +456,14 @@ class VerifyFaceId(APIView):
 
             # Process uploaded image
             try:
-                image1 = face_recognition.load_image_file(uploaded_image)
+                # Reset file pointer
+                uploaded_image.seek(0)
+                # Load using PIL for better compatibility
+                pil_image1 = PILImage.open(uploaded_image)
+                if pil_image1.mode != 'RGB':
+                    pil_image1 = pil_image1.convert('RGB')
+                image1 = np.array(pil_image1)
+                
                 face_locations1 = face_recognition.face_locations(image1)
                 
                 print(f"Uploaded image face locations: {face_locations1}")

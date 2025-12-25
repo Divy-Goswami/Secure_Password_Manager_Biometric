@@ -24,6 +24,8 @@ export default function ShowPasswordPage() {
   const [isVerified, setIsVerified] = useState(false); // For face verification status
   const [faceDetected, setFaceDetected] = useState(false);
   const [imageData, setImageData] = useState<string | null>(null);
+  // imageBlob will store the actual blob for uploading
+  const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   const [faceIdVerified, setFaceIdVerified] = useState<boolean>(false);
   const router = useRouter();
   const { setIsAuthenticated } = useAuth();
@@ -194,6 +196,7 @@ export default function ShowPasswordPage() {
           if (blob) {
             const imageUrl = URL.createObjectURL(blob);
             setImageData(imageUrl);
+            setImageBlob(blob); // Store the blob directly for upload
             setFaceCaptured(true);
             console.log("✅ Image Captured!");
             toast.success("Face captured successfully");
@@ -302,7 +305,7 @@ export default function ShowPasswordPage() {
   };
   const uploadFaceId = async () => {
     try {
-      if (!imageData) {
+      if (!imageBlob) {
         toast.error("No face image captured. Please try again.");
         return;
       }
@@ -311,13 +314,7 @@ export default function ShowPasswordPage() {
       setIsVerifyingFace(true);
       
       const formData = new FormData();
-      // imageData is an object URL; fetch it to get the Blob
-      const responseBlob = await fetch(imageData);
-      if (!responseBlob.ok) {
-        throw new Error("Failed to process captured image");
-      }
-      
-      const imageBlob = await responseBlob.blob();
+      // Use the stored blob directly
       formData.append("image", imageBlob, "face.png");
 
       const response = await fetch(
@@ -377,6 +374,7 @@ export default function ShowPasswordPage() {
     setFaceIdVerified(false);
     setFaceCaptured(false);
     setImageData(null);
+    setImageBlob(null);
     setFaceDetected(false);
     setIsFaceVerified(false);
     setIsVerifyingFace(false);

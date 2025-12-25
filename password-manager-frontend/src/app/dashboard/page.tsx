@@ -14,6 +14,8 @@ export default function DashboardPage() {
   const [faceDetected, setFaceDetected] = useState(false);
   // imageData will store an object URL for the captured face image
   const [imageData, setImageData] = useState<string | null>(null);
+  // imageBlob will store the actual blob for uploading
+  const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [faceCaptured, setFaceCaptured] = useState(false);
@@ -239,6 +241,7 @@ export default function DashboardPage() {
           if (blob) {
             const imageUrl = URL.createObjectURL(blob);
             setImageData(imageUrl);
+            setImageBlob(blob); // Store the blob directly for upload
             setFaceCaptured(true);
             console.log("✅ Image Captured!");
 
@@ -265,7 +268,7 @@ export default function DashboardPage() {
 
   const uploadFaceId = async () => {
     try {
-      if (!imageData) {
+      if (!imageBlob) {
         toast.error("No face image captured. Please try again.");
         return;
       }
@@ -273,9 +276,7 @@ export default function DashboardPage() {
       toast.loading("Processing and validating your face image...");
       
       const formData = new FormData();
-      // imageData is an object URL; fetch it to get the Blob
-      const responseBlob = await fetch(imageData!);
-      const imageBlob = await responseBlob.blob();
+      // Use the stored blob directly
       formData.append("image", imageBlob, "face.png");
 
       console.log("Uploading image with FormData");
@@ -294,25 +295,47 @@ export default function DashboardPage() {
 
       toast.dismiss();
       
-      const data = await response.json();
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get("content-type");
+      let data: any = {};
+      
+      if (contentType && contentType.includes("application/json")) {
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error("Failed to parse JSON response:", jsonError);
+          const text = await response.text();
+          console.error("Response text:", text);
+          toast.error(`Server error: ${response.status} ${response.statusText}`);
+          return;
+        }
+      } else {
+        const text = await response.text();
+        console.error("Non-JSON response:", text);
+        toast.error(`Server error: ${response.status} ${response.statusText}`);
+        return;
+      }
       
       // Use response.ok to check if the response status is in the 2xx range
       if (response.ok) {
         toast.success(data.message || "Face uploaded successfully! Face ID setup complete.");
         setFaceIdExists(true);
         setImageData(null);
+        setImageBlob(null);
         setFaceCaptured(false);
         // Refresh the page to reload all data
         window.location.reload();
       } else {
-        console.error("Upload failed:", data);
-        toast.error(data.error || "Failed to upload face. Please try again with a clearer image of your face only.");
+        console.error("Upload failed. Status:", response.status, "Data:", data);
+        const errorMessage = data.error || data.message || `Upload failed with status ${response.status}. Please try again with a clearer image of your face only.`;
+        toast.error(errorMessage);
         // Keep the captured image so user can try again
       }
-    } catch (error) {
+    } catch (error: any) {
       toast.dismiss();
-      console.error("⚠️ Error uploading Face. Please try again.", error);
-      toast.error("Error uploading Face. Please try again with a clearer image.");
+      console.error("⚠️ Error uploading Face:", error);
+      const errorMessage = error.message || "Error uploading Face. Please try again with a clearer image.";
+      toast.error(errorMessage);
     }
   };
 
