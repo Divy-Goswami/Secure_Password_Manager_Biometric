@@ -1,6 +1,7 @@
 import os
 import pyotp
 import numpy as np
+from io import BytesIO
 from PIL import Image as PILImage
 try:
     import face_recognition
@@ -370,10 +371,12 @@ class ImageUploadView(APIView):
             # Reset file pointer for saving
             file.seek(0)
             
-            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-            filename = f"{timestamp}_{file.name}"
+            # Read the file content as bytes
+            image_bytes = file.read()
+            content_type = file.content_type or 'image/png'
+            filename = file.name or 'face.png'
 
-            # Create an image instance and save the image file
+            # Create an image instance and save the image data to database
             try:
                 # Delete previous face image if it exists
                 try:
@@ -383,15 +386,21 @@ class ImageUploadView(APIView):
                 except Image.DoesNotExist:
                     pass
 
-                image_instance = Image(image=file, user=user)
-                image_instance.save()  # This will automatically save the image to the server and populate image_url
-                print(f"New face image saved successfully at: {image_instance.image}")
+                # Create new image instance with binary data
+                image_instance = Image(
+                    user=user,
+                    image_data=image_bytes,
+                    filename=filename,
+                    content_type=content_type
+                )
+                image_instance.save()
+                print(f"New face image saved successfully to database for user: {user.username}")
 
-                # Return the image URL in the response
+                # Return success response
                 return Response(
                     {
                         "message": "Face image uploaded successfully!",
-                        "image_url": str(image_instance.image),
+                        "image_id": image_instance.id,
                     },
                     status=status.HTTP_201_CREATED,
                 )
@@ -490,12 +499,24 @@ class VerifyFaceId(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Process saved faceId image
+            # Process saved faceId image from database
             try:
-                user_saved_image_path = self.get_image_path(str(image.image))
-                print(f"Attempting to load saved image from: {user_saved_image_path}")
+                print(f"Loading saved image from database for user: {user.username}")
                 
-                image2 = face_recognition.load_image_file(user_saved_image_path)
+                # Get image bytes from database
+                image_bytes = image.get_image_bytes()
+                if not image_bytes:
+                    return Response(
+                        {"error": "No image data found in database."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                
+                # Load image from bytes using PIL
+                pil_image2 = PILImage.open(BytesIO(image_bytes))
+                if pil_image2.mode != 'RGB':
+                    pil_image2 = pil_image2.convert('RGB')
+                image2 = np.array(pil_image2)
+                
                 face_locations2 = face_recognition.face_locations(image2)
                 
                 print(f"Saved image face locations: {face_locations2}")
@@ -540,15 +561,3 @@ class VerifyFaceId(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    def get_image_path(self, image_path):
-        try:
-            BASE_DIR = Path(__file__).resolve().parent.parent
-            media_root = os.path.join(BASE_DIR, "media")
-            full_image_path = os.path.join(media_root, image_path)
-            
-            if not os.path.exists(full_image_path):
-                raise FileNotFoundError(f"Face ID image not found at path: {full_image_path}")
-                
-            return full_image_path
-        except Exception as e:
-            raise Exception(f"Error resolving image path: {str(e)}")

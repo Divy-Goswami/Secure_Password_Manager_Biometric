@@ -77,7 +77,8 @@ from .models import Image
 
 
 class ImageSerializer(serializers.ModelSerializer):
-
+    # Don't include image_data in the serializer by default (it's large binary data)
+    # Include metadata instead
     class Meta:
         model = Image
-        fields = ["id", "image", "user"]
+        fields = ["id", "filename", "content_type", "uploaded_at", "user"]

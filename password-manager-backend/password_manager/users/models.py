@@ -15,36 +15,29 @@ CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
 
 
-# Save Face Image
-def image_upload_to(instance, filename):
-    # Create a custom filename with the current date and time
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    lowercase_filename = filename.lower()
-    return f"images/{timestamp}_{lowercase_filename}"
-
-
 class Image(models.Model):
     user = models.ForeignKey(
         "CustomUser",
         on_delete=models.CASCADE,
         related_name="image",
     )
-    image = models.ImageField(upload_to=image_upload_to)  # Store the actual image
-    image_url = models.CharField(
-        max_length=255, blank=True, null=True
-    )  # Store the URL (optional)
+    # Store image data directly in the database as binary
+    image_data = models.BinaryField(null=True, blank=True)
+    # Store original filename for reference
+    filename = models.CharField(max_length=255, blank=True, null=True)
+    # Store content type (e.g., 'image/png', 'image/jpeg')
+    content_type = models.CharField(max_length=100, default='image/png')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         app_label = "users"
 
-    def save(self, *args, **kwargs):
-        if not self.image_url and self.image:
-            self.image_url = self.image.url  # Set image_url to the image URL
-        super().save(*args, **kwargs)
+    def get_image_bytes(self):
+        """Return the image data as bytes."""
+        return bytes(self.image_data) if self.image_data else None
 
     def __str__(self):
-        return f"Image {self.id}"
+        return f"Image {self.id} for {self.user.username}"
 
 
 class CustomUser(AbstractUser):
