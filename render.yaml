@@ -13,7 +13,7 @@ services:
     region: singapore
     plan: free
     buildCommand: "./build.sh"
-    startCommand: "gunicorn password_manager.wsgi:application"
+    startCommand: "cd password_manager && gunicorn password_manager.wsgi:application"
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0

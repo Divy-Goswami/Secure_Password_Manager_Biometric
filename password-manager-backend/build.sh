@@ -2,6 +2,9 @@
 # Exit on error
 set -o errexit
 
+# Navigate to the inner project directory
+cd password_manager
+
 # Install dependencies
 pip install -r requirements.production.txt
 
