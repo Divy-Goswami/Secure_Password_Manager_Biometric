@@ -8,6 +8,7 @@ databases:
 services:
   - type: web
     name: password-manager-backend
+    rootDir: password-manager-backend
     runtime: python
     region: singapore
     plan: free
